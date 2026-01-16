@@ -214,6 +214,12 @@ class Client implements ClientInterface
      */
     protected function getAccessToken(): ?string
     {
+
+        // Look for stored access token
+        $storedAccessToken = Redis::get('fortnox-access-' . md5($this->getClientId()));
+        if (!empty($storedAccessToken) && strlen($storedAccessToken) > 2) {
+            return $storedAccessToken;
+        }
         // Look for stored refresh token
         $storedRefreshToken = Redis::get('fortnox-refresh-' . md5($this->getClientId()));
 
@@ -241,12 +247,14 @@ class Client implements ClientInterface
             }
 
             Redis::set('fortnox-refresh-' . md5($this->getClientId()), $response->json('refresh_token'), 'EX', 2160000); // 25 days
+            Redis::set('fortnox-access-' . md5($this->getClientId()), $response->json('access_token'), 'EX', 3000); // 50 minutes
+
 
             return $response->json('access_token');
         }
 
         $refreshedToken = $this->refreshAccessToken();
-        Redis::set('fortnox-access-' . md5($this->getClientId()), $refreshedToken);
+        Redis::set('fortnox-access-' . md5($this->getClientId()), $refreshedToken, 'EX', 3000); // 50 minutes
         return $refreshedToken;
     }
 
