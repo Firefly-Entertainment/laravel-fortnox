@@ -26,12 +26,21 @@ use KFoobar\Fortnox\Resources\Supplier\SupplierInvoiceFileConnections;
 
 class Fortnox
 {
+
+    protected Client $client;
     /**
      * Constructs a new instance.
      */
     public function __construct()
     {
-        $this->client = new Client;
+        //$this->client = new Client;
+    }
+
+    public function forCompany(mixed $company): Fortnox
+    {
+        $clone = clone $this;
+        $clone->client = new Client($company['client_id'], $company['client_secret'], $company['code']);
+        return $clone;
     }
 
     /**

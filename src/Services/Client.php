@@ -13,16 +13,27 @@ use KFoobar\Fortnox\Exceptions\FortnoxException;
 
 class Client implements ClientInterface
 {
+    protected ?string $clientId = null;
+    protected ?string $clientSecret = null;
+    protected ?string $code = null;
+    protected mixed $client;
+
     /**
      * Constructs a new instance.
      */
-    public function __construct()
+    public function __construct(string $clientId, string $clientSecret, string|null $code = null)
     {
+        $this->clientId = $clientId;
+        $this->clientSecret = $clientSecret;
+        $this->code = $code;
+
         $this->client = Http::baseUrl($this->getHost())
             ->timeout($this->getTimeout())
             ->withToken($this->getAccessToken())
             ->asJson()
             ->acceptJson();
+
+
     }
 
     /**
@@ -181,7 +192,7 @@ class Client implements ClientInterface
      */
     protected function getClientId(): ?string
     {
-        return config('fortnox.client_id');
+        return $this->clientId;
     }
 
     /**
@@ -191,7 +202,7 @@ class Client implements ClientInterface
      */
     protected function getClientSecret(): ?string
     {
-        return config('fortnox.client_secret');
+        return $this->clientSecret;
     }
 
     /**
@@ -201,11 +212,39 @@ class Client implements ClientInterface
      */
     protected function getAccessToken(): ?string
     {
+        // Look for stored refresh token
+        $storedRefreshToken = Redis::get('fortnox-refresh-' . md5($this->getClientId()));
+
+        // If we don't have a stored refresh token we need to exchange the code for tokens
+        if (empty($storedRefreshToken) || strlen($storedRefreshToken) < 2) {
+            if (empty($this->code)) {
+                throw new FortnoxException('No refresh token found and no code provided to exchange for tokens.');
+            }
+
+            $response = Http::withBasicAuth($this->getClientId(), $this->getClientSecret())
+                ->timeout($this->getTimeout())
+                ->asForm()
+                ->post('https://apps.fortnox.se/oauth-v1/token', [
+                    'grant_type' => 'authorization_code',
+                    'code'       => $this->code,
+                ]);
+
+            if ($response->failed()) {
+                throw new FortnoxException('Failed to exchange code for tokens.');
+            }
+
+            if (empty($response->json('access_token')) || empty($response->json('refresh_token'))) {
+                throw new FortnoxException('Failed to retrieve tokens from response.');
+            }
+
+            Redis::set('fortnox-refresh-' . md5($this->getClientId()), $response->json('refresh_token'), 'EX', 2160000); // 25 days
+
+            return $response->json('access_token');
+        }
+
         $refreshedToken = $this->refreshAccessToken();
-        Redis::set('fortnox-access-token', $refreshedToken);
+        Redis::set('fortnox-access-' . md5($this->getClientId()), $refreshedToken);
         return $refreshedToken;
-
-
     }
 
     /**
@@ -217,14 +256,10 @@ class Client implements ClientInterface
      */
     protected function getRefreshToken(): string
     {
-        $storedRefreshToken = Redis::get('fortnox-refresh-token');
+        $storedRefreshToken = Redis::get('fortnox-refresh-' . md5($this->getClientId()));
 
         if (!empty($storedRefreshToken) && strlen($storedRefreshToken) > 2) {
             return $storedRefreshToken;
-        }
-
-        if (!empty(config('fortnox.refresh_token'))) {
-            return config('fortnox.refresh_token');
         }
 
         throw new FortnoxException('Refresh token not found or not valid');
@@ -269,7 +304,7 @@ class Client implements ClientInterface
             throw new FortnoxException('Failed to retrieve refresh token from response.');
         }
 
-        Redis::set('fortnox-refresh-token', $response->json('refresh_token'), 'EX', 2160000); // 25 days
+        Redis::set('fortnox-refresh-' . md5($this->getClientId()), $response->json('refresh_token'), 'EX', 2160000); // 25 days
 
         return $response->json('access_token');
     }
