@@ -16,16 +16,18 @@ class Client implements ClientInterface
     protected ?string $clientId = null;
     protected ?string $clientSecret = null;
     protected ?string $code = null;
+    protected ?string $redirectUri = null;
     protected mixed $client;
 
     /**
      * Constructs a new instance.
      */
-    public function __construct(string $clientId, string $clientSecret, string|null $code = null)
+    public function __construct(string $clientId, string $clientSecret, string|null $code = null, string|null $redirectUri = null)
     {
         $this->clientId = $clientId;
         $this->clientSecret = $clientSecret;
         $this->code = $code;
+        $this->redirectUri = $redirectUri;
 
         $this->client = Http::baseUrl($this->getHost())
             ->timeout($this->getTimeout())
@@ -227,6 +229,7 @@ class Client implements ClientInterface
                 ->post('https://apps.fortnox.se/oauth-v1/token', [
                     'grant_type' => 'authorization_code',
                     'code'       => $this->code,
+                    'redirect_uri' => $this->redirectUri,
                 ]);
 
             if ($response->failed()) {
