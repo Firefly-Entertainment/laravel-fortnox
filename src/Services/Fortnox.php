@@ -39,7 +39,7 @@ class Fortnox
     public function forCompany(mixed $company): Fortnox
     {
         $clone = clone $this;
-        $clone->client = new Client($company['client_id'], $company['client_secret'], $company['code'], $company['redirect_uri']);
+        $clone->client = new Client($company['client_id'], $company['client_secret'], $company['code'] ?? null, $company['redirect_uri'] ?? null);
         return $clone;
     }
 
